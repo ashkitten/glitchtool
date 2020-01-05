@@ -18,11 +18,11 @@ stdenv.mkDerivation {
     expat
     xorg.libxcb
     fontconfig
+
+    ## For dialogs
+    gnome3.zenity
   ];
 
-  # LD_LIBRARY_PATH = ''
-  #   ${xorg.libXcursor}/lib:${xorg.libX11}/lib
-  # '';
   LD_LIBRARY_PATH = stdenv.lib.makeLibraryPath [
     xorg.libX11
     xorg.libXcursor

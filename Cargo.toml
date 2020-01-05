@@ -1,8 +1,8 @@
 [package]
 name = "glitchtool"
 version = "0.1.0"
-authors = ["ash lea <example@thisismyactual.email>"]
+authors = [ "ash lea <example@thisismyactual.email>" ]
 edition = "2018"
 
 [dependencies]
-azul = { git = "https://github.com/maps4print/azul" }
+azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool", features = [ "image_loading" ] }
