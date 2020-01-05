@@ -1,0 +1,7 @@
+[package]
+name = "glitchtool"
+version = "0.1.0"
+authors = ["ash lea <example@thisismyactual.email>"]
+edition = "2018"
+
+[dependencies]
