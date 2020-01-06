@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool", features = [ "image_loading" ] }
+image = "0.22.3"
