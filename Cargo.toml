@@ -5,5 +5,5 @@ authors = [ "ash lea <example@thisismyactual.email>" ]
 edition = "2018"
 
 [dependencies]
-azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool", features = [ "image_loading" ] }
+azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool" }
 image = "0.22.3"

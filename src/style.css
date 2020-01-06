@@ -1,0 +1,13 @@
+body {
+    background: #222222;
+    color: #ffffff;
+}
+
+#preview_image {
+    max-width: 640px;
+    max-height: 400px;
+}
+
+#image_bytes {
+    font-family: "Source Code Pro";
+}
