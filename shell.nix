@@ -7,23 +7,27 @@ stdenv.mkDerivation {
   nativeBuildInputs = [
     rustup
 
-    # Build-time Additional Dependencies
+    # build-time additional dependencies
     pkgconfig
     python3
   ];
 
   buildInputs = [
-    # Run-time Additional Dependencies
+    # run-time additional dependencies
     freetype
     expat
     xorg.libxcb
     fontconfig
 
-    ## For dialogs
+    # for dialogs
     gnome3.zenity
+
+    # fuse
+    fuse
   ];
 
   LD_LIBRARY_PATH = stdenv.lib.makeLibraryPath [
+    # for azul
     xorg.libX11
     xorg.libXcursor
     xorg.libXrandr

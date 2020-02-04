@@ -6,4 +6,8 @@ edition = "2018"
 
 [dependencies]
 azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool" }
-image = "0.22.3"
+image = "0.22"
+fuse_mt = "0.5"
+libc = "0.2"
+fuse = "0.3"
+time = "0.1"

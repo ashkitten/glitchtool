@@ -1,6 +1,11 @@
 use azul::{prelude::*, widgets::button::Button};
+use fuse::BackgroundSession;
 use image::{Bgra, ImageBuffer};
-use std::time::Duration;
+use std::{path::Path, time::Duration};
+
+mod encoding;
+mod file_handle;
+mod filesystem;
 
 // needs to be a macro because `include_str!` wants a string literal
 macro_rules! CSS_PATH {
@@ -9,11 +14,12 @@ macro_rules! CSS_PATH {
     };
 }
 
-struct GlitchApp {
+struct GlitchApp<'f> {
     // we'll make this an RgbaImage later, but azul doesn't currently work with RGBA8
     img: Option<ImageBuffer<Bgra<u8>, Vec<u8>>>,
     display_mode: DisplayMode,
     bytes_text_id: Option<TextId>,
+    filesystem: Option<BackgroundSession<'f>>,
 }
 
 #[derive(PartialEq)]
@@ -22,22 +28,29 @@ enum DisplayMode {
     Bytes,
 }
 
-impl Layout for GlitchApp {
+impl<'f> Layout for GlitchApp<'f> {
     fn layout(&self, info: LayoutInfo) -> Dom<Self> {
         let mut dom = Dom::body();
 
-        let button = Button::with_label("Load image")
-            .dom()
-            .with_callback(On::MouseUp, load_image);
+        let mut button_bar = Dom::div().with_id("button_bar");
 
-        dom = dom.with_child(button);
+        let file_button = Button::with_label("Load image")
+            .dom()
+            .with_id("file_button")
+            .with_callback(On::MouseUp, load_image);
+        button_bar = button_bar.with_child(file_button);
 
         if self.img.is_some() {
             let toggle_button = Button::with_label("Toggle display mode")
                 .dom()
+                .with_id("toggle_button")
                 .with_callback(On::MouseUp, toggle_display_mode);
-            dom = dom.with_child(toggle_button);
+            button_bar = button_bar.with_child(toggle_button);
+        }
 
+        dom = dom.with_child(button_bar);
+
+        if self.img.is_some() {
             if self.display_mode == DisplayMode::Image {
                 let image_id = info.resources.get_css_image_id("preview_image").unwrap();
                 let image = Dom::image(*image_id).with_id("preview_image");
@@ -60,6 +73,15 @@ fn load_image(info: CallbackInfo<GlitchApp>) -> UpdateScreen {
         // there doesn't seem to be a way to make the image update aside from deleting the image
         // id. should i also delete the image source first? unsure if potential memory leak
         info.resources.delete_css_image_id("preview_image");
+
+        let path = Path::new(&path);
+        let fuse_path = path.parent().unwrap().join(path.file_stem().unwrap());
+        std::fs::create_dir(&fuse_path).ok();
+
+        info.state.filesystem = Some(filesystem::start(
+            image::open(path).unwrap().to_rgba(),
+            fuse_path.to_str().unwrap().to_string(),
+        ));
 
         let img = image::open(path).unwrap().to_bgra();
 
@@ -103,6 +125,7 @@ fn main() {
             img: None,
             display_mode: DisplayMode::Image,
             bytes_text_id: None,
+            filesystem: None,
         },
         AppConfig::default(),
     )

@@ -3,6 +3,10 @@ body {
     color: #ffffff;
 }
 
+#button_bar * {
+    flex-direction: row;
+}
+
 #preview_image {
     max-width: 640px;
     max-height: 400px;
