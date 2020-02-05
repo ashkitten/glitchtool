@@ -6,8 +6,9 @@ edition = "2018"
 
 [dependencies]
 azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool" }
+env_logger = "0.7"
+failure = "0.1"
+fuse = { git = "https://github.com/zargony/fuse-rs", branch = "modernize" }
 image = "0.22"
-fuse_mt = "0.5"
 libc = "0.2"
-fuse = "0.3"
-time = "0.1"
+log = "0.4"

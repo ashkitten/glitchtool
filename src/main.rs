@@ -3,9 +3,8 @@ use fuse::BackgroundSession;
 use image::{Bgra, ImageBuffer};
 use std::{path::Path, time::Duration};
 
-mod encoding;
-mod file_handle;
-mod filesystem;
+pub mod encoding;
+pub mod filesystem;
 
 // needs to be a macro because `include_str!` wants a string literal
 macro_rules! CSS_PATH {
@@ -120,6 +119,8 @@ fn toggle_display_mode(info: CallbackInfo<GlitchApp>) -> UpdateScreen {
 }
 
 fn main() {
+    env_logger::builder().format_timestamp(None).init();
+
     let app = App::new(
         GlitchApp {
             img: None,
@@ -127,7 +128,10 @@ fn main() {
             bytes_text_id: None,
             filesystem: None,
         },
-        AppConfig::default(),
+        AppConfig {
+            enable_logging: None, // using our own logger
+            ..Default::default()
+        },
     )
     .unwrap();
 
