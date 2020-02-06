@@ -1,19 +1,24 @@
-use crate::encoding::{bmp::BMP, jpeg::JPEG, png::PNG, EncodedImage, Encoder};
+use crate::{
+    encoding::{bmp::BMP, jpeg::JPEG, png::PNG, EncodedImage, Encoder},
+    Message,
+};
 use failure::Error;
 use fuse::{
-    BackgroundSession, FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory,
-    ReplyEntry, ReplyOpen, ReplyWrite, Request,
+    FileAttr, FileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen,
+    ReplyWrite, Request,
 };
 use image::RgbaImage;
-use log::error;
+use log::{error, info};
 use std::{
     cmp,
     collections::BTreeMap,
     ffi::OsStr,
+    sync::mpsc::Sender,
     time::{Duration, SystemTime},
 };
 
 type BoxEncoder = Box<dyn Encoder + Send>;
+type BoxEncodedImage = EncodedImage<BoxEncoder>;
 
 macro_rules! encodings {
     ( $( $ext:expr => $enc:expr ),+ $(,)? ) => {
@@ -34,22 +39,24 @@ encodings! {
     "jpg" => JPEG,
 }
 
-struct EncodingFS {
+pub struct EncodingFS {
     image: RgbaImage,
     changed: SystemTime,
-    inodes: BTreeMap<u64, EncodedImage<BoxEncoder>>,
+    inodes: BTreeMap<u64, BoxEncodedImage>,
+    sender: Sender<Message>,
 }
 
 impl EncodingFS {
-    fn new(image: RgbaImage) -> Self {
+    pub fn new(image: RgbaImage, sender: Sender<Message>) -> Self {
         Self {
             image,
             changed: SystemTime::now(),
             inodes: BTreeMap::new(),
+            sender,
         }
     }
 
-    fn inode(&mut self, ino: u64) -> Result<&EncodedImage<BoxEncoder>, Error> {
+    fn inode(&mut self, ino: u64) -> Result<&BoxEncodedImage, Error> {
         if !self.inodes.contains_key(&ino) {
             let data = EncodedImage::encode(
                 &self.image,
@@ -60,7 +67,7 @@ impl EncodingFS {
         Ok(self.inodes.get(&ino).unwrap())
     }
 
-    fn inode_mut(&mut self, ino: u64) -> Result<&mut EncodedImage<BoxEncoder>, Error> {
+    fn inode_mut(&mut self, ino: u64) -> Result<&mut BoxEncodedImage, Error> {
         if !self.inodes.contains_key(&ino) {
             let data = EncodedImage::encode(
                 &self.image,
@@ -230,7 +237,11 @@ impl Filesystem for EncodingFS {
 
                 match encoded.decode() {
                     Ok(img) => {
+                        info!("replacing image");
                         self.image = img;
+                        self.sender
+                            .send(Message::ImageChanged(self.image.clone()))
+                            .unwrap();
                         self.inodes = BTreeMap::new();
                     }
                     Err(e) => error!("{:?}", e),
@@ -269,16 +280,4 @@ impl Filesystem for EncodingFS {
         }
         reply.ok();
     }
-}
-
-pub fn start<'a>(image: RgbaImage, mountpoint: String) -> BackgroundSession<'a> {
-    // TODO: take command line options
-    let options = ["auto_unmount", "default_permissions"]
-        .iter()
-        .map(OsStr::new)
-        .flat_map(|option| vec![OsStr::new("-o"), option])
-        .collect::<Vec<_>>();
-
-    let fs = EncodingFS::new(image);
-    unsafe { fuse::spawn_mount(fs, &mountpoint, &options).unwrap() }
 }

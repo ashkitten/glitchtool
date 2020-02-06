@@ -5,10 +5,14 @@ authors = [ "ash lea <example@thisismyactual.email>" ]
 edition = "2018"
 
 [dependencies]
-azul = { git = "https://github.com/ashkitten/azul", branch = "glitchtool" }
+async-std = { version = "1.5", features = [ "unstable" ] }
 env_logger = "0.7"
 failure = "0.1"
 fuse = { git = "https://github.com/zargony/fuse-rs", branch = "modernize" }
+futures = "0.3"
+iced = { git = "https://github.com/hecrj/iced", features = [ "image" ] }
+iced_native = { git = "https://github.com/hecrj/iced" }
 image = "0.22"
 libc = "0.2"
 log = "0.4"
+tinyfiledialogs = "3.3"

@@ -16,6 +16,6 @@ impl Encoder for JPEG {
     }
 
     fn decode(&self, buf: &[u8]) -> Result<Image, Error> {
-        Ok(image::load_from_memory_with_format(buf, ImageFormat::PNG)?.to_rgba())
+        Ok(image::load_from_memory_with_format(buf, ImageFormat::JPEG)?.to_rgba())
     }
 }

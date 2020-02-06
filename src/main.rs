@@ -1,149 +1,132 @@
-use azul::{prelude::*, widgets::button::Button};
+use crate::filesystem::EncodingFS;
 use fuse::BackgroundSession;
-use image::{Bgra, ImageBuffer};
-use std::{path::Path, time::Duration};
+use iced::{
+    button, executor, image::Handle, Application, Button, Column, Command, Element, Image,
+    Settings, Subscription, Text,
+};
+use image::{bmp::BMPEncoder, RgbaImage, RGBA};
+use std::{
+    ffi::OsStr,
+    path::Path,
+    sync::mpsc::{channel, Receiver},
+    time::Duration,
+};
+use tinyfiledialogs::open_file_dialog;
 
 pub mod encoding;
 pub mod filesystem;
-
-// needs to be a macro because `include_str!` wants a string literal
-macro_rules! CSS_PATH {
-    () => {
-        concat!(env!("CARGO_MANIFEST_DIR"), "/src/style.css")
-    };
-}
+pub mod time;
 
 struct GlitchApp<'f> {
-    // we'll make this an RgbaImage later, but azul doesn't currently work with RGBA8
-    img: Option<ImageBuffer<Bgra<u8>, Vec<u8>>>,
-    display_mode: DisplayMode,
-    bytes_text_id: Option<TextId>,
+    image: Option<RgbaImage>,
     filesystem: Option<BackgroundSession<'f>>,
+    file_button: button::State,
+    receiver: Option<Receiver<Message>>,
 }
 
-#[derive(PartialEq)]
-enum DisplayMode {
-    Image,
-    Bytes,
+#[derive(Debug, Clone)]
+pub enum Message {
+    FileButtonPressed,
+    ImageChanged(RgbaImage),
+    Tick,
 }
 
-impl<'f> Layout for GlitchApp<'f> {
-    fn layout(&self, info: LayoutInfo) -> Dom<Self> {
-        let mut dom = Dom::body();
+impl<'f> Application for GlitchApp<'f> {
+    type Executor = executor::Default;
+    type Message = Message;
 
-        let mut button_bar = Dom::div().with_id("button_bar");
+    fn new() -> (Self, Command<Message>) {
+        (
+            Self {
+                image: None,
+                filesystem: None,
+                file_button: button::State::default(),
+                receiver: None,
+            },
+            Command::none(),
+        )
+    }
 
-        let file_button = Button::with_label("Load image")
-            .dom()
-            .with_id("file_button")
-            .with_callback(On::MouseUp, load_image);
-        button_bar = button_bar.with_child(file_button);
+    fn title(&self) -> String {
+        String::from("glitchtool")
+    }
 
-        if self.img.is_some() {
-            let toggle_button = Button::with_label("Toggle display mode")
-                .dom()
-                .with_id("toggle_button")
-                .with_callback(On::MouseUp, toggle_display_mode);
-            button_bar = button_bar.with_child(toggle_button);
-        }
+    fn update(&mut self, message: Message) -> Command<Message> {
+        match message {
+            Message::FileButtonPressed => {
+                if let Some(path) = open_file_dialog("glitchapp", "", None) {
+                    let path = Path::new(&path);
+                    let mountpoint = path.parent().unwrap().join(path.file_stem().unwrap());
+                    std::fs::create_dir(&mountpoint).ok();
 
-        dom = dom.with_child(button_bar);
+                    let options = ["auto_unmount", "default_permissions"]
+                        .iter()
+                        .map(OsStr::new)
+                        .flat_map(|option| vec![OsStr::new("-o"), option])
+                        .collect::<Vec<_>>();
 
-        if self.img.is_some() {
-            if self.display_mode == DisplayMode::Image {
-                let image_id = info.resources.get_css_image_id("preview_image").unwrap();
-                let image = Dom::image(*image_id).with_id("preview_image");
+                    let image = image::open(path).unwrap().to_rgba();
+                    self.image = Some(image.clone());
 
-                dom = dom.with_child(image)
+                    let (sender, receiver) = channel();
+                    self.receiver = Some(receiver);
+
+                    let fs = EncodingFS::new(image, sender);
+                    unsafe {
+                        let session = fuse::spawn_mount(fs, &mountpoint, &options).unwrap();
+                        self.filesystem = Some(session);
+                    }
+                }
             }
 
-            if self.display_mode == DisplayMode::Bytes {
-                let text = Dom::text_id(self.bytes_text_id.unwrap()).with_id("image_bytes");
-                dom = dom.with_child(text);
+            Message::ImageChanged(new_image) => {
+                self.image = Some(new_image);
+            }
+
+            // hacky workaround to check receiver for messages, eventually this shouldn't be
+            // necessary
+            Message::Tick => {
+                if let Some(ref receiver) = self.receiver {
+                    if let Ok(message) = receiver.try_recv() {
+                        return self.update(message);
+                    }
+                }
             }
         }
 
-        dom
+        Command::none()
     }
-}
 
-fn load_image(info: CallbackInfo<GlitchApp>) -> UpdateScreen {
-    if let Some(path) = azul::dialogs::open_file_dialog(None, None) {
-        // there doesn't seem to be a way to make the image update aside from deleting the image
-        // id. should i also delete the image source first? unsure if potential memory leak
-        info.resources.delete_css_image_id("preview_image");
-
-        let path = Path::new(&path);
-        let fuse_path = path.parent().unwrap().join(path.file_stem().unwrap());
-        std::fs::create_dir(&fuse_path).ok();
-
-        info.state.filesystem = Some(filesystem::start(
-            image::open(path).unwrap().to_rgba(),
-            fuse_path.to_str().unwrap().to_string(),
-        ));
-
-        let img = image::open(path).unwrap().to_bgra();
-
-        let raw_image = RawImage {
-            pixels: img.clone().into_raw(),
-            image_dimensions: (img.width() as usize, img.height() as usize),
-            data_format: RawImageFormat::BGRA8,
-        };
-
-        let text = img
-            .clone()
-            .into_raw()
-            .iter()
-            .take(10000) // azul doesn't do any render culling currently
-            .map(|byte| format!("{:02x}", byte))
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        let words = azul::text_layout::split_text_into_words(&text);
-        info.state.bytes_text_id = Some(info.resources.add_text(words));
-
-        info.state.img = Some(img);
-
-        let image_id = info.resources.add_css_image_id("preview_image");
-        info.resources
-            .add_image_source(image_id, ImageSource::Raw(raw_image));
+    fn subscription(&self) -> Subscription<Message> {
+        match self.receiver {
+            Some(_) => time::every(Duration::from_millis(20)).map(|_| Message::Tick),
+            None => Subscription::none(),
+        }
     }
-    Redraw
-}
-fn toggle_display_mode(info: CallbackInfo<GlitchApp>) -> UpdateScreen {
-    info.state.display_mode = match info.state.display_mode {
-        DisplayMode::Image => DisplayMode::Bytes,
-        DisplayMode::Bytes => DisplayMode::Image,
-    };
-    Redraw
+
+    fn view(&mut self) -> Element<Message> {
+        let mut col = Column::new();
+        col = col.push(
+            Button::new(&mut self.file_button, Text::new("open file"))
+                .on_press(Message::FileButtonPressed),
+        );
+
+        if let Some(ref img) = self.image {
+            let mut buffer = Vec::new();
+            let mut encoder = BMPEncoder::new(&mut buffer);
+            let (width, height) = img.dimensions();
+            encoder
+                .encode(&img.clone().into_raw(), width, height, RGBA(8))
+                .unwrap();
+            col = col.push(Image::new(Handle::from_memory(buffer)));
+        }
+
+        col.into()
+    }
 }
 
 fn main() {
     env_logger::builder().format_timestamp(None).init();
 
-    let app = App::new(
-        GlitchApp {
-            img: None,
-            display_mode: DisplayMode::Image,
-            bytes_text_id: None,
-            filesystem: None,
-        },
-        AppConfig {
-            enable_logging: None, // using our own logger
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    #[cfg(debug_assertions)]
-    {
-        let hot_reloader = css::hot_reload_override_native(CSS_PATH!(), Duration::from_millis(500));
-        app.run(WindowCreateOptions::new_hot_reload(hot_reloader));
-    }
-
-    #[cfg(not(debug_assertions))]
-    {
-        let css = css::override_native(include_str!(CSS_PATH!())).unwrap();
-        app.run(WindowCreateOptions::new(css));
-    }
+    GlitchApp::run(Settings::default());
 }
